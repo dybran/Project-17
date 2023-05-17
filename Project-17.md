@@ -2,7 +2,22 @@
 
 This is a countinuation of [Project-16](https://github.com/dybran/Project-16/blob/main/Project-16.md).
 
-In this Project, we will continue creating the resources
+In this Project, we will continue creating the resources for the __AWS__ setup. The resources to be created include:
+
+- 4 Private subnets
+- 1 Internet Gateway
+- 1 NAT Gateway
+- 1 Elastic IP
+- 2 Route tables
+- IAM roles
+- Security Groups
+- Target Group for Nginx, WordPress and Tooling
+- Certificate from AWS certificate manager
+- External Application Load Balancer and Internal Application Load Balancer.
+- Launch template for Bastion, Tooling, Nginx and WordPress
+- Auto Scaling Group (ASG) for Bastion, Tooling, Nginx and WordPress
+- Elastic Filesystem
+- Relational Database (RDS)
 
 __CREATE 4 PRIVATE SUBNETS AND TAGGING__
 
@@ -47,7 +62,7 @@ Update our __main.tf__ code with the following. Each section of the codes for th
  tags = merge(
   var.tags,
    {
-    Name = format("%s-PrivateSubnet-%s", var.name, count.index)
+    Name = format("%s-priv-sub-%s", var.name, count.index)
    },
 )
 ```
@@ -241,7 +256,7 @@ resource "aws_internet_gateway" "narbyd-ig" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s!", aws_vpc.narbyd-vpc.id,"IG")
+      Name = format("%s-%s", var.name,"IG")
     } 
   )
 }
@@ -290,12 +305,12 @@ Create a file called __route_tables.tf__ and use it to create routes for both pu
 ```
 # create private route table
 resource "aws_route_table" "private-rtb" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.narbyd-vpc.id
 
   tags = merge(
     var.tags,
     {
-      Name = format("%s-Private-Route-Table", var.name)
+      Name = format("%s-Priv-RT", var.name)
     },
   )
 }
@@ -309,12 +324,12 @@ resource "aws_route_table_association" "private-subnets-assoc" {
 
 # create route table for the public subnets
 resource "aws_route_table" "public-rtb" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.narbyd-vpc.id
 
   tags = merge(
     var.tags,
     {
-      Name = format("%s-Public-Route-Table", var.name)
+      Name = format("%s-Pub-RT", var.name)
     },
   )
 }
@@ -323,7 +338,7 @@ resource "aws_route_table" "public-rtb" {
 resource "aws_route" "public-rtb-route" {
   route_table_id         = aws_route_table.public-rtb.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.ig.id
+  gateway_id             = aws_internet_gateway.narbyd-ig.id
 }
 
 # associate all public subnets to the public route table
@@ -333,3 +348,365 @@ resource "aws_route_table_association" "public-subnets-assoc" {
   route_table_id = aws_route_table.public-rtb.id
 }
 ```
+Now if you run
+
+
+`$ terraform validate`
+
+`$ terraform plan`
+
+`$ terraform apply` 
+
+
+This will add the following resources to AWS in multi-az set up:
+
+- Our vpc
+- 2 Public subnets
+- 4 Private subnets
+- 1 Internet Gateway
+- 1 NAT Gateway
+- 1 Elastic IP
+- 2 Route tables (private and public)
+
+![](./images/1q.PNG)
+![](./images/2q.PNG)
+
+If everything is ok we run 
+
+`$ terraform apply`
+
+![](./images/1qa.PNG)
+![](./images/2qa.PNG)
+![](./images/3qa.PNG)
+
+These are some of the resources created
+
+![](./images/111.PNG)
+![](./images/112.PNG)
+![](./images/113.PNG)
+![](./images/114.PNG)
+![](./images/115.PNG)
+
+we have created the Networking part of the set up.
+
+let us move on to Compute and Access Control configuration automation using Terraform.
+
+__AWS Identity and Access Management__
+
+__IAM and Roles__
+
+We want to pass an IAM role our EC2 instances to give them access to some specific resources, so we need to do the following:
+
+__Create AssumeRole__
+
+Assume Role uses __Security Token Service (STS) API__ that returns a set of temporary security credentials that you can use to access AWS resources that you might not normally have access to. These temporary credentials consist of an access key ID, a secret access key, and a security token. Typically, you use AssumeRole within your account or for cross-account access.
+
+Add the following code to a new file named __roles.tf__
+
+```
+resource "aws_iam_role" "ec2_instance_role" {
+name = "ec2_instance_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "aws assume role"
+    },
+  )
+}
+```
+![](./images/rst.PNG)
+
+In this code we are creating __AssumeRole__ with __AssumeRole__ policy. It grants to an entity - in our case it is an EC2, permissions to assume the role.
+
+Create __IAM policy__ for this role.
+
+This is where we need to define a required policy (i.e., permissions) according to our requirements. For example, allowing an IAM role to perform action describe applied to EC2 instances:
+
+```
+resource "aws_iam_policy" "policy" {
+  name        = "ec2_instance_policy"
+  description = "A test policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ec2:Describe*",
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name =  "aws assume policy"
+    },
+  )
+
+}
+```
+
+Attach the __Policy__ to the __IAM Role__
+
+This is where, we will be attaching the policy which we created above, to the role we created in the first step.
+
+```
+resource "aws_iam_role_policy_attachment" "test-attach" {
+  role       = aws_iam_role.ec2_instance_role.name
+  policy_arn = aws_iam_policy.policy.arn
+}
+```
+
+Create an __Instance Profile___ and interpolate the __IAM Role__
+
+```
+resource "aws_iam_instance_profile" "ip" {
+  name = "aws_instance_profile_test"
+  role =  aws_iam_role.ec2_instance_role.name
+}
+```
+__CREATE SECURITY GROUPS__
+
+Create a file and name it __secgrp.tf__, copy and paste the code below
+
+```
+# security group for alb, to allow acess from any where for HTTP and HTTPS traffic
+resource "aws_security_group" "ext-alb-sg" {
+  name        = "ext-alb-sg"
+  vpc_id      = aws_vpc.narbyd-vpc.id
+  description = "Allow TLS inbound traffic"
+
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+ tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s, var.name, "ext-ALB-SG")
+    },
+  )
+
+}
+
+# security group for bastion, to allow access into the bastion host
+resource "aws_security_group" "bastion_sg" {
+  name        = "vpc_web_sg"
+  vpc_id = aws_vpc.narbyd-vpc.id
+  description = "Allow incoming HTTP connections."
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+   tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s", var.name, "Bastion-SG")
+    },
+  )
+}
+
+#security group for nginx reverse proxy, to allow access only from the external load balancer and bastion instance
+resource "aws_security_group" "nginx-sg" {
+  name   = "nginx-sg"
+  vpc_id = aws_vpc.narbyd-vpc.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+   tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s", var.name, "nginx-SG")
+    },
+  )
+}
+
+resource "aws_security_group_rule" "inbound-nginx-http" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ext-alb-sg.id
+  security_group_id        = aws_security_group.nginx-sg.id
+}
+
+resource "aws_security_group_rule" "inbound-bastion-ssh" {
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.bastion_sg.id
+  security_group_id        = aws_security_group.nginx-sg.id
+}
+
+# security group for internal ALB, to have access only from nginx reverser proxy server
+resource "aws_security_group" "int-alb-sg" {
+  name   = "my-alb-sg"
+  vpc_id = aws_vpc.narbyd-vpc.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s", var.name, "int-ALB-SG")
+    },
+  )
+
+}
+
+resource "aws_security_group_rule" "inbound-ialb-https" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nginx-sg.id
+  security_group_id        = aws_security_group.int-alb-sg.id
+}
+
+# security group for webservers, to have access only from the internal load balancer and bastion instance
+resource "aws_security_group" "webserver-sg" {
+  name   = "ASG-sg"
+  vpc_id = aws_vpc.narbyd-vpc.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s", var.name, "webserver-SG")
+    },
+  )
+
+}
+
+resource "aws_security_group_rule" "inbound-web-https" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.int-alb-sg.id
+  security_group_id        = aws_security_group.webserver-sg.id
+}
+
+resource "aws_security_group_rule" "inbound-web-ssh" {
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.bastion_sg.id
+  security_group_id        = aws_security_group.webserver-sg.id
+}
+
+# security group for datalayer to allow traffic from websever on nfs and mysql port and bastion host on mysql port
+resource "aws_security_group" "datalayer-sg" {
+  name   = "datalayer-sg"
+  vpc_id = aws_vpc.narbyd-vpc.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+ tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s", var.name, "datalayer-SG")
+    },
+  )
+}
+
+resource "aws_security_group_rule" "inbound-nfs-port" {
+  type                     = "ingress"
+  from_port                = 2049
+  to_port                  = 2049
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.webserver-sg.id
+  security_group_id        = aws_security_group.datalayer-sg.id
+}
+
+resource "aws_security_group_rule" "inbound-mysql-bastion" {
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.bastion_sg.id
+  security_group_id        = aws_security_group.datalayer-sg.id
+}
+
+resource "aws_security_group_rule" "inbound-mysql-webserver" {
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.webserver-sg.id
+  security_group_id        = aws_security_group.datalayer-sg.id
+}
+```
+We used the __aws_security_group_rule__ to refrence another security group in a security group.
