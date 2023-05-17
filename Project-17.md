@@ -968,4 +968,4 @@ resource "aws_lb_listener_rule" "tooling-listener" {
   }
 }
 ```
-### __CREATING AUSTOALING GROUPS__
+### __CREATING AUTOSCALING GROUPS__
