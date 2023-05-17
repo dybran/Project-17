@@ -712,7 +712,7 @@ resource "aws_security_group_rule" "inbound-mysql-webserver" {
 ```
 We use the __aws_security_group_rule__ to refrence another security group in a security group.
 
-### __CREATE CERTIFICATE FROM AMAZON CERIFICATE MANAGER (ACM)__
+### __CREATE CERTIFICATE FROM AMAZON CERTIFICATE MANAGER (ACM)__
 
 Create __cert.tf__ file and add the following code snippets to it.
 This entire section will create a __certificate, public zone,__ and __validate the certificate__ using __DNS__ method
