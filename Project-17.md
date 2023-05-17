@@ -115,7 +115,7 @@ resource "aws_subnet" "public" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-PublicSubnet-%s", var.name, count.index)
+      Name = format("%s-pub-sub-%s", var.name, count.index)
     },
   )
 
@@ -132,12 +132,15 @@ resource "aws_subnet" "private" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-PrivateSubnet-%s", var.name, count.index)
+      Name = format("%s-pub-sub-%s", var.name, count.index)
     },
   )
 
 }
 ```
+
+The __%s__ takes the interpolated value of __var.name__ while the second __%s__ takes the value of the __count.index__.
+
 For the __vars.tf__
 
 ```
@@ -166,20 +169,26 @@ variable "enable_classiclink_dns_support" {
 }
 
 variable "preferred_number_of_public_subnets" {
-  type = 2
+  type = number
   description = "Number of public subnets"
 }
-
 variable "preferred_number_of_private_subnets" {
-  type = 2
-  description = "Number of public subnets"
+  type = number
+  description = "Number of private subnets"
 }
-
 variable "tags" {
   description = "A mapping of tags to assign to all resources."
   type        = map(string)
   default     = {}
 }
+
+
+variable "name" {
+  type = string
+  default = "narbyd"
+}
+
+
 ```
 For the __terraform.tfvars__
 
@@ -201,7 +210,6 @@ preferred_number_of_public_subnets = 2
 preferred_number_of_private_subnets = 4
 
 tags = {
-  Enviroment      = "production" 
   Owner-Email     = "onwuasoanyasc@gmail.com"
   Managed-By      = "Terraform"
   Billing-Account = "939895954199"
@@ -218,4 +226,110 @@ Now we run
 
 `$ terraform plan`
 
+![](./images/12.PNG)
+![](./images/13.PNG)
 
+
+__Create Internet Gateway__
+
+Create an Internet Gateway in a separate Terraform file __internet_gateway.tf__.
+
+```
+resource "aws_internet_gateway" "narbyd-ig" {
+  vpc_id = aws_vpc.narbyd-vpc.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-%s!", aws_vpc.narbyd-vpc.id,"IG")
+    } 
+  )
+}
+```
+![](./images/qaw.PNG)
+
+__Create NAT Gateway__
+
+We need to create an Elastic IP for the NAT Gateway before creating the NAT Gateway.
+
+Create a file __natgateway.tf__ and add the following code to create the Elastic IP and the NAT Gateway.
+
+```
+resource "aws_eip" "narbyd-nat_eip" {
+  vpc        = true
+  depends_on = [aws_internet_gateway.narbyd-ig]
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-EIP", var.name)
+    },
+  )
+}
+
+resource "aws_nat_gateway" "narbyd-nat" {
+  allocation_id = aws_eip.narbyd-nat_eip.id
+  subnet_id     = element(aws_subnet.public.*.id, 0)
+  depends_on    = [aws_internet_gateway.narbyd-ig]
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-NAT", var.name)
+    },
+  )
+}
+```
+
+ The __depends_on__ is used to indicate that the Internet Gateway resource must be available before this should be created. 
+
+__AWS Routes__
+
+Create a file called __route_tables.tf__ and use it to create routes for both public and private subnets.
+
+```
+# create private route table
+resource "aws_route_table" "private-rtb" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-Private-Route-Table", var.name)
+    },
+  )
+}
+
+# associate all private subnets to the private route table
+resource "aws_route_table_association" "private-subnets-assoc" {
+  count          = length(aws_subnet.private[*].id)
+  subnet_id      = element(aws_subnet.private[*].id, count.index)
+  route_table_id = aws_route_table.private-rtb.id
+}
+
+# create route table for the public subnets
+resource "aws_route_table" "public-rtb" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = format("%s-Public-Route-Table", var.name)
+    },
+  )
+}
+
+# create route for the public route table and attach the internet gateway
+resource "aws_route" "public-rtb-route" {
+  route_table_id         = aws_route_table.public-rtb.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.ig.id
+}
+
+# associate all public subnets to the public route table
+resource "aws_route_table_association" "public-subnets-assoc" {
+  count          = length(aws_subnet.public[*].id)
+  subnet_id      = element(aws_subnet.public[*].id, count.index)
+  route_table_id = aws_route_table.public-rtb.id
+}
+```
