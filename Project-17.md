@@ -19,7 +19,7 @@ In this Project, we will continue creating the resources for the __AWS__ setup. 
 - Elastic Filesystem
 - Relational Database (RDS)
 
-__CREATE 4 PRIVATE SUBNETS AND TAGGING__
+### __CREATE 4 PRIVATE SUBNETS AND TAGGING__
 
 We will create 4 subnets by updating the __main.tf__ with the following code.
 
@@ -245,7 +245,7 @@ Now we run
 ![](./images/13.PNG)
 
 
-__Create Internet Gateway__
+### __Create Internet Gateway__
 
 Create an Internet Gateway in a separate Terraform file __internet_gateway.tf__.
 
@@ -263,7 +263,7 @@ resource "aws_internet_gateway" "narbyd-ig" {
 ```
 ![](./images/qaw.PNG)
 
-__Create NAT Gateway__
+### __Create NAT Gateway__
 
 We need to create an Elastic IP for the NAT Gateway before creating the NAT Gateway.
 
@@ -298,7 +298,7 @@ resource "aws_nat_gateway" "narbyd-nat" {
 
  The __depends_on__ is used to indicate that the Internet Gateway resource must be available before this should be created. 
 
-__AWS Routes__
+### __AWS Routes__
 
 Create a file called __route_tables.tf__ and use it to create routes for both public and private subnets.
 
@@ -391,7 +391,7 @@ we have created the Networking part of the set up.
 
 let us move on to Compute and Access Control configuration automation using Terraform.
 
-__AWS Identity and Access Management__
+### __AWS Identity and Access Management__
 
 __IAM and Roles__
 
@@ -483,7 +483,7 @@ resource "aws_iam_instance_profile" "ip" {
   role =  aws_iam_role.ec2_instance_role.name
 }
 ```
-__CREATE SECURITY GROUPS__
+### __CREATE SECURITY GROUPS__
 
 Create a file and name it __secgrp.tf__, copy and paste the code below
 
@@ -517,14 +517,15 @@ resource "aws_security_group" "ext-alb-sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
- tags = merge(
+  tags = merge(
     var.tags,
     {
-      Name = format("%s-%s, var.name, "ext-ALB-SG")
+      Name = "narbyd-ext-ALB-SG"
     },
   )
 
 }
+
 
 # security group for bastion, to allow access into the bastion host
 resource "aws_security_group" "bastion_sg" {
@@ -550,7 +551,7 @@ resource "aws_security_group" "bastion_sg" {
    tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "Bastion-SG")
+      Name = "narbyd-Bastion-SG"
     },
   )
 }
@@ -570,7 +571,7 @@ resource "aws_security_group" "nginx-sg" {
    tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "nginx-SG")
+      Name = "narbyd-nginx-SG"
     },
   )
 }
@@ -608,7 +609,7 @@ resource "aws_security_group" "int-alb-sg" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "int-ALB-SG")
+      Name = "narbyd-int-ALB-SG"
     },
   )
 
@@ -638,7 +639,7 @@ resource "aws_security_group" "webserver-sg" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "webserver-SG")
+      Name = "narbyd-webserver-SG"
     },
   )
 
@@ -677,7 +678,7 @@ resource "aws_security_group" "datalayer-sg" {
  tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "datalayer-SG")
+      Name = "narbyd-datalayer-SG"
     },
   )
 }
@@ -709,4 +710,262 @@ resource "aws_security_group_rule" "inbound-mysql-webserver" {
   security_group_id        = aws_security_group.datalayer-sg.id
 }
 ```
-We used the __aws_security_group_rule__ to refrence another security group in a security group.
+We use the __aws_security_group_rule__ to refrence another security group in a security group.
+
+### __CREATE CERTIFICATE FROM AMAZON CERIFICATE MANAGER (ACM)__
+
+Create __cert.tf__ file and add the following code snippets to it.
+This entire section will create a __certificate, public zone,__ and __validate the certificate__ using __DNS__ method
+
+```
+
+# Create the certificate using a wildcard for all the domains created in mydevopsproject.top
+resource "aws_acm_certificate" "narbyd-acm" {
+  domain_name       = "*.mydevopsproject.top"
+  validation_method = "DNS"
+}
+
+# calling the hosted zone
+data "aws_route53_zone" "narbyd-route53" {
+  name         = "mydevopsproject.top"
+  private_zone = false
+}
+
+# selecting validation method
+resource "aws_route53_record" "narbyd-record" {
+  for_each = {
+    for dvo in aws_acm_certificate.narbyd-acm.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.narbyd-route53.zone_id
+}
+
+# validate the certificate through DNS method
+resource "aws_acm_certificate_validation" "narbyd-acm-v" {
+  certificate_arn         = aws_acm_certificate.narbyd-acm.arn
+  validation_record_fqdns = [for record in aws_route53_record.narbyd-record : record.fqdn]
+}
+
+# create records for tooling
+resource "aws_route53_record" "tooling" {
+  zone_id = data.aws_route53_zone.narbyd-route53.zone_id
+  name    = "tooling.mydevopsproject.top"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.ext-alb.dns_name
+    zone_id                = aws_lb.ext-alb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# create records for wordpress
+resource "aws_route53_record" "wordpress" {
+  zone_id = data.aws_route53_zone.narbyd-route53.zone_id
+  name    = "wordpress.mydevopsproject.top"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.ext-alb.dns_name
+    zone_id                = aws_lb.ext-alb.zone_id
+    evaluate_target_health = true
+  }
+}
+```
+
+### __Create an external (Internet facing) Application Load Balancer (ALB)__
+
+Create a file called __alb.tf__
+
+First of all we will create the __ALB__, then we create the __target group__ and lastly we will create the __listener rule__. We need to create an __ALB__ to balance the traffic between the Instances:
+
+```
+resource "aws_lb" "ext-alb" {
+  name     = "ext-alb"
+  internal = false
+  security_groups = [
+    aws_security_group.ext-alb-sg.id,
+  ]
+
+  subnets = [
+    aws_subnet.public[0].id,
+    aws_subnet.public[1].id
+  ]
+
+   tags = merge(
+    var.tags,
+    {
+      Name = "narbyd-ext-ALB"
+    },
+  )
+
+  ip_address_type    = "ipv4"
+  load_balancer_type = "application"
+}
+```
+To inform the __ALB__ to where to route the traffic, we need to create a __Target Group__ to point to its targets:
+
+```
+resource "aws_lb_target_group" "nginx-tgt" {
+  health_check {
+    interval            = 10
+    path                = "/healthstatus"
+    protocol            = "HTTPS"
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+  name        = "nginx-tgt"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "instance"
+  vpc_id      = aws_vpc.narbyd-vpc.id
+}
+```
+Then we will need to create a __Listner__ for this target Group
+
+```
+resource "aws_lb_listener" "nginx-listner" {
+  load_balancer_arn = aws_lb.ext-alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate_validation.narbyd-acm-v.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.nginx-tgt.arn
+  }
+}
+```
+Add the following outputs to __output.tf__ to print them on screen
+
+```
+output "alb_dns_name" {
+  value = aws_lb.ext-alb.dns_name
+}
+
+output "alb_target_group_arn" {
+  value = aws_lb_target_group.nginx-tgt.arn
+}
+```
+### __Create an Internal Application Load Balancer (ALB)__
+
+The same concepts used to create the __external load balancer__ will be used to create the __internal load balancer___.
+
+Add the code snippets inside the __alb.tf__ file.
+
+```
+# ----------------------------
+#Internal Load Balancers for webservers
+#---------------------------------
+
+resource "aws_lb" "int-alb" {
+  name     = "int-alb"
+  internal = true
+  security_groups = [
+    aws_security_group.int-alb-sg.id,
+  ]
+
+  subnets = [
+    aws_subnet.private[0].id,
+    aws_subnet.private[1].id
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "narbyd-int-alb"
+    },
+  )
+
+  ip_address_type    = "ipv4"
+  load_balancer_type = "application"
+}
+```
+To inform our ALB to where route the traffic we need to create a Target Group to point to its targets:
+
+```
+# --- target group  for wordpress -------
+
+resource "aws_lb_target_group" "wordpress-tgt" {
+  health_check {
+    interval            = 10
+    path                = "/healthstatus"
+    protocol            = "HTTPS"
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+
+  name        = "wordpress-tgt"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "instance"
+  vpc_id      = aws_vpc.narbyd-vpc.id
+}
+
+# --- target group for tooling -------
+
+resource "aws_lb_target_group" "tooling-tgt" {
+  health_check {
+    interval            = 10
+    path                = "/healthstatus"
+    protocol            = "HTTPS"
+    timeout             = 5
+    healthy_threshold   = 5
+    unhealthy_threshold = 2
+  }
+
+  name        = "tooling-tgt"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "instance"
+  vpc_id      = aws_vpc.narbyd.id
+}
+```
+Then we will need to create a __Listner__ for this __target Group__. A default listener will be created for the wordpress then a rule will be created to route traffic to tooling when the host header changes.
+
+```
+# For this aspect a single listener was created for the wordpress which is default,
+# A rule was created to route traffic to tooling when the host header changes
+
+resource "aws_lb_listener" "web-listener" {
+  load_balancer_arn = aws_lb.int-alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate_validation.narbyd-acm-v.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.wordpress-tgt.arn
+  }
+}
+
+# listener rule for tooling target
+
+resource "aws_lb_listener_rule" "tooling-listener" {
+  listener_arn = aws_lb_listener.web-listener.arn
+  priority     = 99
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tooling-tgt.arn
+  }
+
+  condition {
+    host_header {
+      values = ["tooling.mydevopsproject.top"]
+    }
+  }
+}
+```
+### __CREATING AUSTOALING GROUPS__
