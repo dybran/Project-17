@@ -30,11 +30,12 @@ resource "aws_security_group" "ext-alb-sg" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s, var.name, "ext-ALB-SG")
+      Name = "narbyd-ext-ALB-SG"
     },
   )
 
 }
+
 
 # security group for bastion, to allow access into the bastion host
 resource "aws_security_group" "bastion_sg" {
@@ -60,7 +61,7 @@ resource "aws_security_group" "bastion_sg" {
    tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "Bastion-SG")
+      Name = "narbyd-Bastion-SG"
     },
   )
 }
@@ -80,7 +81,7 @@ resource "aws_security_group" "nginx-sg" {
    tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "nginx-SG")
+      Name = "narbyd-nginx-SG"
     },
   )
 }
@@ -118,7 +119,7 @@ resource "aws_security_group" "int-alb-sg" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "int-ALB-SG")
+      Name = "narbyd-int-ALB-SG"
     },
   )
 
@@ -148,7 +149,7 @@ resource "aws_security_group" "webserver-sg" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "webserver-SG")
+      Name = "narbyd-webserver-SG"
     },
   )
 
@@ -187,7 +188,7 @@ resource "aws_security_group" "datalayer-sg" {
  tags = merge(
     var.tags,
     {
-      Name = format("%s-%s", var.name, "datalayer-SG")
+      Name = "narbyd-datalayer-SG"
     },
   )
 }

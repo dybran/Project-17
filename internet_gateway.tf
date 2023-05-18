@@ -4,8 +4,8 @@ resource "aws_internet_gateway" "narbyd-ig" {
   tags = merge(
     var.tags,
     {
-      Name = format("%s-%s!", aws_vpc.narbyd-vpc.id,"IG")
-    } 
+      Name = format("%s-%s", var.name, "IG")
+    }
   )
 }
 

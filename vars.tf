@@ -42,3 +42,13 @@ variable "name" {
   type    = string
   default = "narbyd"
 }
+
+variable "ami" {
+  type        = string
+  description = "AMI ID for launch template"
+}
+
+variable "keypair" {
+  type        = string
+  description = "keypair for the instances"
+}
