@@ -1,7 +1,7 @@
 
 #### creating sns topic for all the auto scaling groups
 resource "aws_sns_topic" "narbyd-sns" {
-name = "Default_CloudWatch_Alarms_Topic"
+  name = "Default_CloudWatch_Alarms_Topic"
 }
 
 resource "aws_autoscaling_notification" "narbyd_notifications" {
@@ -22,7 +22,7 @@ resource "aws_autoscaling_notification" "narbyd_notifications" {
 }
 
 resource "random_shuffle" "az_list" {
-  input        = data.aws_availability_zones.available.names
+  input = data.aws_availability_zones.available.names
 }
 
 resource "aws_launch_template" "bastion-launch-template" {
@@ -37,7 +37,7 @@ resource "aws_launch_template" "bastion-launch-template" {
   key_name = var.keypair
 
   placement {
-    availability_zone = random_shuffle.az_list.result
+    availability_zone = "random_shuffle.az_list.result"
   }
 
   lifecycle {
@@ -47,12 +47,12 @@ resource "aws_launch_template" "bastion-launch-template" {
   tag_specifications {
     resource_type = "instance"
 
-   tags = merge(
-    var.tags,
-    {
-      Name = "bastion-launch-template"
-    },
-  )
+    tags = merge(
+      var.tags,
+      {
+        Name = "bastion-launch-template"
+      },
+    )
   }
 
   user_data = filebase64("${path.module}/bastion.sh")
@@ -79,7 +79,7 @@ resource "aws_autoscaling_group" "bastion-asg" {
   }
   tag {
     key                 = "Name"
-    value               = "bastion-launch-template"
+    value               = "Bastion"
     propagate_at_launch = true
   }
 
@@ -96,10 +96,10 @@ resource "aws_launch_template" "nginx-launch-template" {
     name = aws_iam_instance_profile.ip.id
   }
 
-  key_name =  var.keypair
+  key_name = var.keypair
 
   placement {
-    availability_zone = random_shuffle.az_list.result
+    availability_zone = "random_shuffle.az_list.result"
   }
 
   lifecycle {
@@ -110,11 +110,11 @@ resource "aws_launch_template" "nginx-launch-template" {
     resource_type = "instance"
 
     tags = merge(
-    var.tags,
-    {
-      Name = "nginx-launch-template"
-    },
-  )
+      var.tags,
+      {
+        Name = "nginx-launch-template"
+      },
+    )
   }
 
   user_data = filebase64("${path.module}/nginx.sh")
@@ -142,7 +142,7 @@ resource "aws_autoscaling_group" "nginx-asg" {
 
   tag {
     key                 = "Name"
-    value               = "nginx-launch-template"
+    value               = "nginx"
     propagate_at_launch = true
   }
 

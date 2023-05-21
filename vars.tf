@@ -1,25 +1,27 @@
 variable "region" {
-  default = "us-east-1"
+  type        = string
+  description = "The region to deploy resources"
 }
 
 variable "vpc_cidr" {
-  default = "172.16.0.0/16"
+  type        = string
+  description = "The VPC cidr"
 }
 
 variable "enable_dns_support" {
-  default = "true"
+  type = bool
 }
 
 variable "enable_dns_hostnames" {
-  default = "true"
+  type = bool
 }
 
 variable "enable_classiclink" {
-  default = "false"
+  type = bool
 }
 
 variable "enable_classiclink_dns_support" {
-  default = "false"
+  type = bool
 }
 
 variable "preferred_number_of_public_subnets" {
@@ -40,7 +42,7 @@ variable "tags" {
 
 variable "name" {
   type    = string
-  default = "narbyd"
+  description = "project name"
 }
 
 variable "ami" {
@@ -51,4 +53,24 @@ variable "ami" {
 variable "keypair" {
   type        = string
   description = "keypair for the instances"
+}
+
+variable "environment" {
+  type        = string
+  description = "Environment"
+}
+
+variable "account_no" {
+  type        = number
+  description = "the account number"
+}
+
+variable "master-username" {
+  type        = string
+  description = "master username for RDS"
+}
+
+variable "master-password" {
+  type        = string
+  description = "master password for RDS"
 }

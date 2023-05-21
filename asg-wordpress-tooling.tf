@@ -12,7 +12,7 @@ resource "aws_launch_template" "wordpress-launch-template" {
   key_name = var.keypair
 
   placement {
-    availability_zone = random_shuffle.az_list.result
+    availability_zone = "random_shuffle.az_list.result"
   }
 
   lifecycle {
@@ -23,11 +23,11 @@ resource "aws_launch_template" "wordpress-launch-template" {
     resource_type = "instance"
 
     tags = merge(
-    var.tags,
-    {
-      Name = "wordpress-launch-template"
-    },
-  )
+      var.tags,
+      {
+        Name = "wordpress-launch-template"
+      },
+    )
 
   }
 
@@ -55,7 +55,7 @@ resource "aws_autoscaling_group" "wordpress-asg" {
   }
   tag {
     key                 = "Name"
-    value               = "wordpress-asg"
+    value               = "wordpress"
     propagate_at_launch = true
   }
 }
@@ -89,12 +89,12 @@ resource "aws_launch_template" "tooling-launch-template" {
   tag_specifications {
     resource_type = "instance"
 
-  tags = merge(
-    var.tags,
-    {
-      Name = "tooling-launch-template"
-    },
-  )
+    tags = merge(
+      var.tags,
+      {
+        Name = "tooling-launch-template"
+      },
+    )
 
   }
 
@@ -124,7 +124,7 @@ resource "aws_autoscaling_group" "tooling-asg" {
 
   tag {
     key                 = "Name"
-    value               = "tooling-launch-template"
+    value               = "tooling"
     propagate_at_launch = true
   }
 }

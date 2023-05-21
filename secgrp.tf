@@ -40,7 +40,7 @@ resource "aws_security_group" "ext-alb-sg" {
 # security group for bastion, to allow access into the bastion host
 resource "aws_security_group" "bastion_sg" {
   name        = "vpc_web_sg"
-  vpc_id = aws_vpc.narbyd-vpc.id
+  vpc_id      = aws_vpc.narbyd-vpc.id
   description = "Allow incoming HTTP connections."
 
   ingress {
@@ -58,7 +58,7 @@ resource "aws_security_group" "bastion_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-   tags = merge(
+  tags = merge(
     var.tags,
     {
       Name = "narbyd-Bastion-SG"
@@ -78,7 +78,7 @@ resource "aws_security_group" "nginx-sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-   tags = merge(
+  tags = merge(
     var.tags,
     {
       Name = "narbyd-nginx-SG"
@@ -185,7 +185,7 @@ resource "aws_security_group" "datalayer-sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
- tags = merge(
+  tags = merge(
     var.tags,
     {
       Name = "narbyd-datalayer-SG"

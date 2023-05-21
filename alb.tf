@@ -10,7 +10,7 @@ resource "aws_lb" "ext-alb" {
     aws_subnet.public[1].id
   ]
 
-   tags = merge(
+  tags = merge(
     var.tags,
     {
       Name = "narbyd-ext-ALB"

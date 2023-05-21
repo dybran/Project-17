@@ -1069,7 +1069,7 @@ resource "aws_autoscaling_group" "bastion-asg" {
   }
   tag {
     key                 = "Name"
-    value               = "bastion-launch-template"
+    value               = "bastion"
     propagate_at_launch = true
   }
 
@@ -1132,7 +1132,7 @@ resource "aws_autoscaling_group" "nginx-asg" {
 
   tag {
     key                 = "Name"
-    value               = "nginx-launch-template"
+    value               = "nginx"
     propagate_at_launch = true
   }
 
@@ -1155,6 +1155,14 @@ variable "keypair" {
   type        = string
   description = "keypair for the instances"
 }
+```
+
+And in the __terraform.tfvars__ add the following
+
+```
+ami = "ami-03951dc3553ee499f"
+
+keypair = "dybran-ec2"
 ```
 Autoscaling for wordpress and tooling will be created in a seperate file.
 
@@ -1218,7 +1226,7 @@ resource "aws_autoscaling_group" "wordpress-asg" {
   }
   tag {
     key                 = "Name"
-    value               = "wordpress-asg"
+    value               = "wordpress"
     propagate_at_launch = true
   }
 }
@@ -1287,7 +1295,7 @@ resource "aws_autoscaling_group" "tooling-asg" {
 
   tag {
     key                 = "Name"
-    value               = "tooling-launch-template"
+    value               = "tooling"
     propagate_at_launch = true
   }
 }
@@ -1297,3 +1305,238 @@ resource "aws_autoscaling_attachment" "asg_attachment_tooling" {
   alb_target_group_arn   = aws_lb_target_group.tooling-tgt.arn
 }
 ```
+Create the files - __bastion.sh, nginx.sh, tooling.sh__ and __wordpress.sh__ . These will contain the scripts to be used to provision the __bastion, nginx, tooling__ and __wordpress__ instances respectively. Click [here](https://github.com/dybran/Project-17) to see the various files and scripts.
+
+We will also create a file __output.tf__. This file is responsible for the display of some needed informaation/values.
+
+```
+output "alb_dns_name" {
+  value = aws_lb.ext-alb.dns_name
+}
+
+output "alb_target_group_arn" {
+  value = aws_lb_target_group.nginx-tgt.arn
+}
+```
+
+### __STORAGE AND DATABASE__
+
+Create __Elastic File System (EFS)__.
+
+In order to create an EFS you need to create a __KMS__ key.
+
+AWS __Key Management Service (KMS)__ makes it easy to create and manage cryptographic keys and control their use across a wide range of AWS services and in applications.
+
+Create __efs.tf__ and add the following code
+
+```
+# create key from key management system
+resource "aws_kms_key" "narbyd-kms" {
+  description = "KMS key "
+  policy      = <<EOF
+  {
+  "Version": "2012-10-17",
+  "Id": "kms-key-policy",
+  "Statement": [
+    {
+      "Sid": "Enable IAM User Permissions",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::${var.account_no}:user/segun" },
+      "Action": "kms:*",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+# create key alias
+resource "aws_kms_alias" "alias" {
+  name          = "alias/kms"
+  target_key_id = aws_kms_key.narbyd-kms.key_id
+}
+```
+Next, we need to create an EFS and it mount targets.We will use the code snippet below
+
+```
+# create Elastic file system
+resource "aws_efs_file_system" "narbyd-efs" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.narbyd-kms.arn
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "narbyd-EFS"
+    },
+  )
+}
+
+# set first mount target for the EFS 
+resource "aws_efs_mount_target" "subnet-1" {
+  file_system_id  = aws_efs_file_system.narbyd-efs.id
+  subnet_id       = aws_subnet.private[2].id
+  security_groups = [aws_security_group.datalayer-sg.id]
+}
+
+# set second mount target for the EFS 
+resource "aws_efs_mount_target" "subnet-2" {
+  file_system_id  = aws_efs_file_system.narbyd-efs.id
+  subnet_id       = aws_subnet.private[3].id
+  security_groups = [aws_security_group.datalayer-sg.id]
+}
+
+# create access point for wordpress
+resource "aws_efs_access_point" "wordpress" {
+  file_system_id = aws_efs_file_system.narbyd-efs.id
+
+  posix_user {
+    gid = 0
+    uid = 0
+  }
+
+  root_directory {
+    path = "/wordpress"
+
+    creation_info {
+      owner_gid   = 0
+      owner_uid   = 0
+      permissions = 0755
+    }
+
+  }
+
+}
+
+# create access point for tooling
+resource "aws_efs_access_point" "tooling" {
+  file_system_id = aws_efs_file_system.narbyd-efs.id
+  posix_user {
+    gid = 0
+    uid = 0
+  }
+
+  root_directory {
+
+    path = "/tooling"
+
+    creation_info {
+      owner_gid   = 0
+      owner_uid   = 0
+      permissions = 0755
+    }
+
+  }
+}
+```
+
+Create __MySQL RDS__
+
+The __RDS__ will be created using the code snippet in __rds.tf__ file:
+
+```
+# This section will create the subnet group for the RDS  instance using the private subnet
+resource "aws_db_subnet_group" "narbyd-rds" {
+  name       = "narbyd-rds"
+  subnet_ids = [aws_subnet.private[2].id, aws_subnet.private[3].id]
+
+ tags = merge(
+    var.tags,
+    {
+      Name = "narbyd-RDS"
+    },
+  )
+}
+
+# create the RDS instance with the subnets group
+resource "aws_db_instance" "narbyd-rds" {
+  allocated_storage      = 20
+  storage_type           = "gp2"
+  engine                 = "mysql"
+  engine_version         = "5.7"
+  instance_class         = "db.t2.micro"
+  name                   = "narbyd-db"
+  username               = var.master-username
+  password               = var.master-password
+  parameter_group_name   = "default.mysql5.7"
+  db_subnet_group_name   = aws_db_subnet_group.narbyd-rds.name
+  skip_final_snapshot    = true
+  vpc_security_group_ids = [aws_security_group.datalayer-sg.id]
+  multi_az               = "true"
+}
+```
+We will declare the variables __master-username__ and __master-password__ in the __vars.tf__ file.
+
+```
+variable "master-username" {
+  type        = string
+  description = "master username for RDS"
+}
+
+variable "master-password" {
+  type        = string
+  description = "master password for RDS"
+}
+```
+In the __terraform.tfvars__
+```
+master-username = "narbyd"
+
+master-password ="939895954199"
+```
+
+We will declare the variable for the __account number__. 
+
+```
+variable "account_no" {
+  type        = number
+  description = "the account number"
+}
+```
+and add update the __terraform.tfvars__
+
+```
+account_no = "939895954199"
+```
+![](./images/acc.PNG)
+
+Go through the codes and make sure that all the variables are declared in the __vars.tf__ and __terraform.tfvars__.
+
+We can now run the commands
+
+`$ terraform init`
+
+`$ terraform fmt`
+
+![](./images/tin.PNG)
+
+`$ terraform valdiate`
+
+![](./images/awaq.PNG)
+
+`$ terraform plan`
+If everything is alright in the plan, we then create the resources by running the command
+
+![](./images/73.PNG)
+
+
+`$ terraform apply`
+
+![](./images/res-cr.PNG)
+
+some of the resources created
+
+![](./images/ere.PNG)
+![](./images/s-q.PNG)
+![](./images/asgq.PNG)
+![](./images/tgq.PNG)
+![](./images/dbsm.PNG)
+
+At this point, we have all infrastructure elements ready to be deployed automatically, but before we plan and apply our code we need to take note of two things.
+
+- We have a long list of files which may looks confusing but we are going to fix this using the concepts of modules in the next project.
+- Our application wont work because in our shell script that was passed into the launch some endpoints like the RDS and EFS point is needed in which they have not been created yet. We will employ the use of __Ansible__ to fix this.
+  
+All these concepts will be implemented later on in this project. This project continues in [Project-18]()
+
+
