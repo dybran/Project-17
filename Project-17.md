@@ -1537,6 +1537,6 @@ At this point, we have all infrastructure elements ready to be deployed automati
 - We have a long list of files which may looks confusing but we are going to fix this using the concepts of modules in the next project.
 - Our application wont work because in our shell script that was passed into the launch some endpoints like the RDS and EFS point is needed in which they have not been created yet. We will employ the use of __Ansible__ to fix this.
   
-All these concepts will be implemented later on in this project. This project continues in [Project-18]()
+All these concepts will be implemented later on in this project. This project continues in [Project-18](https://github.com/dybran/Project-18/blob/main/Project-18.md).
 
 
