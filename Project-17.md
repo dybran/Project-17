@@ -1507,8 +1507,6 @@ We can now run the commands
 
 `$ terraform fmt`
 
-![](./images/tin.PNG)
-
 `$ terraform valdiate`
 
 ![](./images/awaq.PNG)
