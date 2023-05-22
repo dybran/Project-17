@@ -2,6 +2,10 @@
 
 This is a countinuation of [Project-16](https://github.com/dybran/Project-16/blob/main/Project-16.md).
 
+We will continue to reference the infrastracture
+
+![](./images/qqqq.PNG)
+
 In this Project, we will continue creating the resources for the __AWS__ setup. The resources to be created include:
 
 - 4 Private subnets
