@@ -1429,7 +1429,6 @@ resource "aws_efs_access_point" "tooling" {
   }
 }
 ```
-
 Create __MySQL RDS__
 
 The __RDS__ will be created using the code snippet in __rds.tf__ file:
@@ -1515,14 +1514,18 @@ We can now run the commands
 ![](./images/awaq.PNG)
 
 `$ terraform plan`
+
 If everything is alright in the plan, we then create the resources by running the command
 
 ![](./images/73.PNG)
 
-
 `$ terraform apply`
 
 ![](./images/res-cr.PNG)
+
+The __output.tf__ file displays the endpoint of the external load balancer
+
+![](./images/output.PNG)
 
 some of the resources created
 
@@ -1539,4 +1542,6 @@ At this point, we have all infrastructure elements ready to be deployed automati
   
 All these concepts will be implemented later on in this project. This project continues in [Project-18](https://github.com/dybran/Project-18/blob/main/Project-18.md).
 
+__PROBLEM ENCOUNTERED:__
 
+There was an error when trying to run __terraform plan__ . I opened the `$ ~/.aws/credentials` and figured that when configuring the AWS CLI, there was an extra space between the __=__ and the __accesskey__. This was fixed before running the `$ terraform plan` again.
