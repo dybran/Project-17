@@ -32,5 +32,5 @@ account_no = "939895954199"
 
 master-username = "narbyd-db"
 
-master-password = "Sa4la2xa#""
+master-password = "Sa4la2xa#"
 
